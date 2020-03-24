@@ -1,0 +1,107 @@
+---
+title: "Analiza spisu powszechnego z USA rok 1994"
+author: "Mateusz Broja"
+date: "01/2020"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r loadlib, echo=T, results='hide', message=F, warning=F}
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(scales)
+library(data.table)
+```
+
+**Pobranie danych**
+
+```{r}
+path = 'http://mlr.cs.umass.edu/ml/machine-learning-databases/census-income/census-income.data'
+data = read.csv(path, strip.white = T)
+colnames(data) = c("age", "workclass", "fnlwgt", "education", "education-num", "marital-status", "occupation", "relationship", "race", "sex", "capital-gain", "capital-loss", "hours-per-week", "nativeCountry", "class")
+head(data)
+```
+
+**Analiza pod k¹tem brakuj¹cych wartoœci**
+
+```{r}
+sum(is.na(data))
+sum(data == '?')
+colSums(data == '?')
+```
+
+**Udzia³ kobiet i mê¿czyzn w grupie oraz histogram przedstawiaj¹cy wiek osób w grupie**
+
+```{r}
+data_male_female = count(data, "sex")
+data_male_female$prop = data_male_female$freq / nrow(data)
+data_male_female = data_male_female %>%
+    arrange(desc(sex)) %>%
+    mutate(lab.ypos = cumsum(prop) - 0.5*prop)
+data_male_female
+mycols = c("#0073C2FF", "#EFC000FF")
+pie_male_female = ggplot(data_male_female, aes(x = "", y = prop, fill = sex)) +
+   geom_bar(width = 1, stat = "identity", color = "white") +
+   coord_polar("y", start = 0)+
+   geom_text(aes(y = lab.ypos, label = percent(prop)), color = "white")+
+   scale_fill_manual(values = mycols) +
+   theme_void()
+pie_male_female
+ggplot(data=data, aes(data$age)) + 
+   geom_histogram(breaks=seq(15, 90, by = 2), 
+                  col="red", 
+                  fill="green", 
+                  alpha = .2) + 
+   labs(title="Histogram for Age", x="Age", y="Count") + scale_x_continuous(breaks = round(seq(min(data$age), max(data$age), by = 5),1))
+```
+
+**Tabela przedstawiaj¹ca udzia³ natywnych amerykanów**
+
+```{r}
+data_table = data.table(data)
+head(data_table)
+nativeCount = data_table[nativeCountry == "United-States" | nativeCountry == "Outlying-US(Guam-USVI-etc)", length(nativeCountry)]
+allCount = data_table[nativeCountry != "?", length(nativeCountry)]
+percent(nativeCount / allCount)
+```
+
+**Iloœæ przepracowanych godzin w tygodniu ze wzglêdu na sektor pracy **
+
+```{r}
+workclass_mean_hours = data_table[workclass != "?", round(mean(`hours-per-week`), digits = 2), by=workclass] [order(-V1)]
+setnames(workclass_mean_hours, "V1", "average_hours_per_week")
+workclass_mean_hours
+ggplot(data=workclass_mean_hours, aes(workclass, average_hours_per_week, fill = workclass)) + geom_bar(stat="identity") + geom_text(aes(label=average_hours_per_week), vjust=-0.5, color="black", size=3.6) + scale_x_discrete(labels = abbreviate) + 
+ggtitle("5. Procent mieszkanców róznego pochodzenia posiadaj¹cych dziecko.") +
+theme_minimal()
+```
+
+**Œredni czas pracy w sektorze prywatnym w grupach wyodrêbnionych ze wzglêdu na wykszta³cenie wœród osób poni¿ej 30 roku ¿ycia oraz maksymalny i minimalny czas pracy w ka¿dej grupie**
+
+```{r}
+by_education_hours = data_table[workclass == "Private" & age < 30, list(mean(`hours-per-week`), min(`hours-per-week`), max(`hours-per-week`), length(workclass)), by = education] [order(-V1)]
+setnames(by_education_hours, old = c("V1", "V2", "V3", "V4"), new = c("Average", "Min", "Max", "Count"))
+by_education_hours
+```
+
+**Procent mieszkañców pochodzenia polskiego posiada dziecko wraz z porównaniem do mieszkañców pochodzenia indyjskiego oraz rdzennego**
+
+```{r}
+nation = data_table[nativeCountry == "Poland" | nativeCountry == "India" | nativeCountry == "United-States", length(relationship), by = nativeCountry]
+
+nation_child = data_table[(nativeCountry == "Poland" & relationship == "Own-child") | (nativeCountry == "India" & relationship == "Own-child") | (nativeCountry == "United-States" & relationship == "Own-child"), length(relationship), by = nativeCountry]
+
+total = merge(nation, nation_child, by="nativeCountry")
+total = cbind(total, round(total$V1.y/total$V1.x*100, digits = 2))
+setnames(total, old = c("nativeCountry", "V1.x", "V1.y", "V2"), new = c("nativeCountry", "count_all", "count_child", "perc"))
+total
+
+ggplot(data = total, aes(nativeCountry, perc, fill = perc)) +
+geom_bar(stat="identity") + 
+geom_text(aes(label=perc), vjust=-0.5, color="black", size=4) + theme_minimal() +
+guides(fill=FALSE) +
+ggtitle("7. Procent mieszkanców róznego pochodzenia posiadaj¹cych dziecko.")
+
+```
